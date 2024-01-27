@@ -14,10 +14,10 @@ startShareScreenButton.addEventListener("click", async () => {
   const handle = await window.showSaveFilePicker({ suggestedName });
   const writable = await handle.createWritable();
 
+  let audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   let screenStream = await navigator.mediaDevices.getDisplayMedia();
   screenStream.addEventListener("inactive", stopSharingAndRecording);
 
-  let audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   stream = new MediaStream([
     ...screenStream.getTracks(),
     ...audioStream.getTracks(),
