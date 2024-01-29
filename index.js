@@ -1,63 +1,92 @@
-const video = document.querySelector("video");
-const startShareScreenButton = document.querySelector(
-  "#startShareScreenButton"
+// @ts-check
+
+const preview = /** @type {HTMLVideoElement} */ (
+  document.querySelector("video")
 );
-const stopShareScreenButton = document.querySelector("#stopShareScreenButton");
-const logs = document.getElementById("logs");
+const startShareScreenButton = /** @type {HTMLButtonElement} */ (
+  document.querySelector("#startShareScreenButton")
+);
+const stopShareScreenButton = /** @type {HTMLButtonElement} */ (
+  document.querySelector("#stopShareScreenButton")
+);
+const logs = /** @type {HTMLPreElement} */ (document.getElementById("logs"));
 
-let stream;
-let recorder;
+/**
+ * @param {Blob[]} recordedData
+ * @param {string} mimeType
+ */
+function downloadRecordedData(recordedData, mimeType) {
+  const blob = new Blob(recordedData, { type: mimeType });
+  const downloadelem = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  document.body.appendChild(downloadelem);
+  downloadelem.href = url;
+  downloadelem.download = "screenrecording.webm";
+  downloadelem.click();
+  downloadelem.remove();
+  window.URL.revokeObjectURL(url);
+}
 
-startShareScreenButton.addEventListener("click", async () => {
-  // Prompt the user to choose where to save the recording file.
-  const suggestedName = "screen-recording.webm";
-  const handle = await window.showSaveFilePicker({ suggestedName });
-  const writable = await handle.createWritable();
+startShareScreenButton.onclick = async () => {
+  /** @type {Blob[]} */
+  const recordedData = [];
 
-  let audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  let screenStream = await navigator.mediaDevices.getDisplayMedia();
-  screenStream.addEventListener("inactive", stopSharingAndRecording);
-
-  stream = new MediaStream([
-    ...screenStream.getTracks(),
-    ...audioStream.getTracks(),
-  ]);
-  recorder = new MediaRecorder(stream);
-
-  // Preview the screen locally.
-  video.srcObject = stream;
-
-  stopShareScreenButton.disabled = false;
-  log("Your screen is being shared.");
-
-  // Start recording.
-  recorder.start();
-  recorder.addEventListener("dataavailable", async (event) => {
-    // Write chunks to the file.
-    await writable.write(event.data);
-    if (recorder.state === "inactive") {
-      // Close the file when the recording stops.
-      await writable.close();
-    }
+  const micStream = await navigator.mediaDevices.getUserMedia({
+    audio: true,
+  });
+  const screenStream = await navigator.mediaDevices.getDisplayMedia({
+    audio: true,
   });
 
-  log("Your screen is being recorded locally.");
-});
+  // to mix the audio from both the computer and the mic
+  // we need to connect two audio nodes to one
+  // without this only one audio track gets recorded
+  const audioCtx = new AudioContext();
+  const micSource = audioCtx.createMediaStreamSource(micStream);
+  const screenSource = audioCtx.createMediaStreamSource(screenStream);
+  const audioDestination = audioCtx.createMediaStreamDestination();
 
-function stopSharingAndRecording() {
-  // Stop the stream.
-  stream.getTracks().forEach((track) => track.stop());
-  video.srcObject = null;
+  //connect sources to destination
+  micSource.connect(audioDestination);
+  screenSource.connect(audioDestination);
 
-  stopShareScreenButton.disabled = true;
-  log("Your screen is not shared anymore.");
+  const stream = new MediaStream([
+    audioDestination.stream.getAudioTracks()[0],
+    screenStream.getVideoTracks()[0],
+  ]);
 
-  // Stop the recording.
-  recorder.stop();
+  const recorder = new MediaRecorder(stream);
 
-  log("Your screen has been successfully recorded locally.");
-}
-stopShareScreenButton.addEventListener("click", stopSharingAndRecording);
+  preview.srcObject = stream;
+  stopShareScreenButton.disabled = false;
+
+  recorder.start();
+
+  // stop all tracks when the native stop sharing button is clicked
+  // this triggers the recorder.onstop
+  stream.getVideoTracks()[0].onended = () => {
+    micStream.getTracks().forEach((track) => track.stop());
+    screenStream.getTracks().forEach((track) => track.stop());
+    audioDestination.stream.getTracks().forEach((track) => track.stop());
+  };
+
+  // put all the recorded data in an array
+  // this triggers when the recorder stops
+  // before recorder.onstop
+  recorder.ondataavailable = (event) => {
+    recordedData.push(event.data);
+  };
+
+  // download the recorded data
+  recorder.onstop = () => {
+    preview.srcObject = null;
+    stopShareScreenButton.disabled = true;
+    downloadRecordedData(recordedData, recorder.mimeType);
+    log("Your screen recording has been downloaded.");
+  };
+
+  log("Your screen is being recorded.");
+};
 
 function log(text) {
   logs.innerText += `\n${text}`;
