@@ -6,9 +6,6 @@ const preview = /** @type {HTMLVideoElement} */ (
 const startShareScreenButton = /** @type {HTMLButtonElement} */ (
   document.querySelector("#startShareScreenButton")
 );
-const stopShareScreenButton = /** @type {HTMLButtonElement} */ (
-  document.querySelector("#stopShareScreenButton")
-);
 const logs = /** @type {HTMLPreElement} */ (document.getElementById("logs"));
 
 /**
@@ -31,34 +28,43 @@ startShareScreenButton.onclick = async () => {
   /** @type {Blob[]} */
   const recordedData = [];
 
-  const micStream = await navigator.mediaDevices.getUserMedia({
-    audio: true,
-  });
+  const micStream = await navigator.mediaDevices
+    .getUserMedia({
+      audio: true,
+    })
+    .catch(() => {
+      log("Mic permission was denied.");
+      return new MediaStream();
+    });
   const screenStream = await navigator.mediaDevices.getDisplayMedia({
     audio: true,
   });
 
+  let audioStream = micStream;
+
   // to mix the audio from both the computer and the mic
   // we need to connect two audio nodes to one
   // without this only one audio track gets recorded
-  const audioCtx = new AudioContext();
-  const micSource = audioCtx.createMediaStreamSource(micStream);
-  const screenSource = audioCtx.createMediaStreamSource(screenStream);
-  const audioDestination = audioCtx.createMediaStreamDestination();
+  if (screenStream.getAudioTracks().length > 0) {
+    const audioCtx = new AudioContext();
+    const audioDestination = audioCtx.createMediaStreamDestination();
 
-  //connect sources to destination
-  micSource.connect(audioDestination);
-  screenSource.connect(audioDestination);
+    const micSource = audioCtx.createMediaStreamSource(micStream);
+    const screenSource = audioCtx.createMediaStreamSource(screenStream);
+    micSource.connect(audioDestination);
+    screenSource.connect(audioDestination);
+
+    audioStream = audioDestination.stream;
+  }
 
   const stream = new MediaStream([
-    audioDestination.stream.getAudioTracks()[0],
-    screenStream.getVideoTracks()[0],
+    ...audioStream.getAudioTracks(),
+    ...screenStream.getVideoTracks(),
   ]);
 
   const recorder = new MediaRecorder(stream);
 
   preview.srcObject = stream;
-  stopShareScreenButton.disabled = false;
 
   recorder.start();
 
@@ -67,7 +73,7 @@ startShareScreenButton.onclick = async () => {
   stream.getVideoTracks()[0].onended = () => {
     micStream.getTracks().forEach((track) => track.stop());
     screenStream.getTracks().forEach((track) => track.stop());
-    audioDestination.stream.getTracks().forEach((track) => track.stop());
+    audioStream.getTracks().forEach((track) => track.stop());
   };
 
   // put all the recorded data in an array
@@ -80,7 +86,6 @@ startShareScreenButton.onclick = async () => {
   // download the recorded data
   recorder.onstop = () => {
     preview.srcObject = null;
-    stopShareScreenButton.disabled = true;
     downloadRecordedData(recordedData, recorder.mimeType);
     log("Your screen recording has been downloaded.");
   };
