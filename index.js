@@ -8,22 +8,6 @@ const startShareScreenButton = /** @type {HTMLButtonElement} */ (
 );
 const logs = /** @type {HTMLPreElement} */ (document.getElementById("logs"));
 
-/**
- * @param {Blob[]} recordedData
- * @param {string} mimeType
- */
-function downloadRecordedData(recordedData, mimeType) {
-  const blob = new Blob(recordedData, { type: mimeType });
-  const downloadelem = document.createElement("a");
-  const url = URL.createObjectURL(blob);
-  document.body.appendChild(downloadelem);
-  downloadelem.href = url;
-  downloadelem.download = "screenrecording.webm";
-  downloadelem.click();
-  downloadelem.remove();
-  window.URL.revokeObjectURL(url);
-}
-
 startShareScreenButton.onclick = async () => {
   /** @type {Blob[]} */
   const recordedData = [];
@@ -92,6 +76,22 @@ startShareScreenButton.onclick = async () => {
 
   log("Your screen is being recorded.");
 };
+
+/**
+ * @param {Blob[]} recordedData
+ * @param {string} mimeType
+ */
+function downloadRecordedData(recordedData, mimeType) {
+  const blob = new Blob(recordedData, { type: mimeType });
+  const downloadelem = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  document.body.appendChild(downloadelem);
+  downloadelem.href = url;
+  downloadelem.download = "screenrecording.webm";
+  downloadelem.click();
+  downloadelem.remove();
+  window.URL.revokeObjectURL(url);
+}
 
 function log(text) {
   logs.innerText += `\n${text}`;
