@@ -18,18 +18,22 @@ startShareScreenButton.onclick = async () => {
     })
     .catch(() => {
       log("Mic permission was denied.");
-      return new MediaStream();
     });
   const screenStream = await navigator.mediaDevices.getDisplayMedia({
     audio: true,
   });
 
-  let audioStream = micStream;
+  let audioStream = null;
 
   // to mix the audio from both the computer and the mic
   // we need to connect two audio nodes to one
   // without this only one audio track gets recorded
-  if (screenStream.getAudioTracks().length > 0) {
+  if (
+    micStream &&
+    micStream.getAudioTracks().length > 0 &&
+    screenStream.getAudioTracks().length > 0
+  ) {
+    log("mic + tab audio");
     const audioCtx = new AudioContext();
     const audioDestination = audioCtx.createMediaStreamDestination();
 
@@ -39,6 +43,12 @@ startShareScreenButton.onclick = async () => {
     screenSource.connect(audioDestination);
 
     audioStream = audioDestination.stream;
+  } else if (micStream && micStream.getAudioTracks().length > 0) {
+    log("mic audio only");
+    audioStream = micStream;
+  } else {
+    log("tab audio only");
+    audioStream = screenStream;
   }
 
   const stream = new MediaStream([
@@ -55,9 +65,11 @@ startShareScreenButton.onclick = async () => {
   // stop all tracks when the native stop sharing button is clicked
   // this triggers the recorder.onstop
   stream.getVideoTracks()[0].onended = () => {
-    micStream.getTracks().forEach((track) => track.stop());
     screenStream.getTracks().forEach((track) => track.stop());
     audioStream.getTracks().forEach((track) => track.stop());
+    if (micStream) {
+      micStream.getTracks().forEach((track) => track.stop());
+    }
   };
 
   // put all the recorded data in an array
@@ -83,15 +95,61 @@ startShareScreenButton.onclick = async () => {
  */
 function downloadRecordedData(recordedData, mimeType) {
   const blob = new Blob(recordedData, { type: mimeType });
+  const extension =
+    mimeTypes.find((mt) => mimeType.startsWith(mt.mimeType))?.extension ?? "";
   const downloadelem = document.createElement("a");
   const url = URL.createObjectURL(blob);
   document.body.appendChild(downloadelem);
   downloadelem.href = url;
-  downloadelem.download = "screenrecording.webm";
+  console.log("mime", mimeType);
+  downloadelem.download = "screenrecording" + extension;
   downloadelem.click();
   downloadelem.remove();
   window.URL.revokeObjectURL(url);
 }
+
+const mimeTypes = [
+  {
+    extension: ".mp4",
+    mimeType: "video/mp4",
+  },
+  {
+    extension: ".webm",
+    mimeType: "video/webm",
+  },
+  {
+    extension: ".ogg",
+    mimeType: "video/ogg",
+  },
+  {
+    extension: ".mov",
+    mimeType: "video/quicktime",
+  },
+  {
+    extension: ".avi",
+    mimeType: "video/x-msvideo",
+  },
+  {
+    extension: ".wmv",
+    mimeType: "video/x-ms-wmv",
+  },
+  {
+    extension: ".flv",
+    mimeType: "video/x-flv",
+  },
+  {
+    extension: ".mkv",
+    mimeType: "video/x-matroska",
+  },
+  {
+    extension: ".3gp",
+    mimeType: "video/3gpp",
+  },
+  {
+    extension: ".3g2",
+    mimeType: "video/3gpp2",
+  },
+];
 
 function log(text) {
   logs.innerText += `\n${text}`;
